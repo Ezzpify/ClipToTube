@@ -115,8 +115,10 @@ namespace ClipToTube
                 "^^Ooh-Ooo-Hoo-Hoo",
                 "^^Sh-Sh-Sh",
                 "^^Zwee?",
-                "^^Boop ^^boop",
-                "^^Hope ^^you ^^enj.. ^^I ^^mean ^^beep ^^boop."
+                "^^Beep ^^boop",
+                "^^Hello ^^humans",
+                "^^Hope ^^you ^^enj.. ^^I ^^mean ^^beep ^^boop.",
+                "^^Zzzzzzzzzz..."
             };
 
             return quotes[mRandom.Next(0, quotes.Count)];
@@ -133,7 +135,7 @@ namespace ClipToTube
             return
                   $"Youtube mirror: https://www.youtube.com/watch?v={youtubeUrlId}\n\n"
                 + $"---\n\n"
-                + $"{GetRandomQuote()} ^^| ^^[Creator](https://www.reddit.com/user/ZionTheKing/) ^^- ^^[Github](https://github.com/Ezzpify/ClipToTube) ^^- ^^[Subreddits](http://pastebin.com/yzzegEEW)";
+                + $"{GetRandomQuote()} ^^| ^^[Creator](https://www.reddit.com/user/ZionTheKing/) ^^- ^^[Github](https://github.com/Ezzpify/ClipToTube) ^^- ^^[Subreddits](http://pastebin.com/7e7SAgxu)";
         }
     }
 }

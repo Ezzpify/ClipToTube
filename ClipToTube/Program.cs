@@ -19,6 +19,7 @@ namespace ClipToTube
             Console.Title = "ClipToTube";
 
             var settings = Settings.GetSettings();
+
             if (settings != null)
                 mSession = new Session(settings);
 

@@ -21,6 +21,7 @@ namespace ClipToTube
 
             File.WriteAllText(Endpoints.SETTINGS_FILE,
                 JsonConvert.SerializeObject(new Config.Settings(), Formatting.Indented));
+
             Console.WriteLine($"Settings file has been written at {Endpoints.SETTINGS_FILE}");
 
             return null;
