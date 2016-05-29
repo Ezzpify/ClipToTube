@@ -35,18 +35,6 @@ namespace ClipToTube
 
 
         /// <summary>
-        /// Logs
-        /// </summary>
-        private Log mLog, mLogError, mLogYoutube;
-
-
-        /// <summary>
-        /// Last time we checked new posts
-        /// </summary>
-        private DateTime mLastCheckedPosts;
-
-
-        /// <summary>
         /// Application settings
         /// </summary>
         private Config.Settings mSettings;
@@ -56,6 +44,12 @@ namespace ClipToTube
         /// Youtube service connection
         /// </summary>
         private YouTubeService mYoutube;
+
+
+        /// <summary>
+        /// Logs
+        /// </summary>
+        private Log mLog, mLogError;
 
 
         /// <summary>
@@ -91,7 +85,6 @@ namespace ClipToTube
             }
 
             mLogError = new Log("Error", "Logs\\ErrorLogs\\Error.txt", 3);
-            mLogYoutube = new Log("Youtube", "Logs\\Youtube.txt", 3);
             mLog = new Log("Session", "Logs\\Session.txt", 3);
 
             mBackgroundWork = new BackgroundWorker();
@@ -116,19 +109,20 @@ namespace ClipToTube
                 foreach (var subredditname in mSettings.subredditList)
                 {
                     mLog.Write(Log.LogLevel.Info, $"Checking /r/{subredditname}");
+
                     Subreddit subreddit = null;
                     for (int i = 0; i < 5; i++)
                     {
                         try
                         {
-                            /*Try to get the reddit*/
+                            /*Try to get the sub-reddit which we will retreive posts from*/
                             subreddit = mReddit.GetSubreddit(subredditname);
                             if (subreddit != null)
                                 break;
                         }
                         catch (Exception ex)
                         {
-                            mLogError.Write(Log.LogLevel.Error, $"Error getting Subreddit '{subredditname}\n{ex.Message}");
+                            mLogError.Write(Log.LogLevel.Error, $"Error getting /r/{subredditname}\n{ex.Message}");
                             Thread.Sleep(5000);
                             continue;
                         }
@@ -148,9 +142,10 @@ namespace ClipToTube
                             if (mCheckedPosts.Contains(post.Id))
                                 continue;
                             
-                            /*Try to match first if we can find a link in the title, if not, then check the selfpost text*/
+                            /*Try to match first if we can find a link in the title*/
                             Match regMatch = Functions.GetClipMatch(post.Title);
 
+                            /*Couldn't find a match in the title, if the post is a selfpost we'll check the text there*/
                             if (!regMatch.Success && post.IsSelfPost)
                                 regMatch = Functions.GetClipMatch(post.SelfText);
 
@@ -165,6 +160,7 @@ namespace ClipToTube
                                 clipUrl = regMatch.Value
                             });
 
+                            /*Add this post's id to already checked list so it won't be checked again*/
                             mCheckedPosts.Add(post.Id);
                         }
                         catch (Exception ex)
@@ -175,12 +171,12 @@ namespace ClipToTube
                     
                     /*Save all checked posts and wait before checking next subreddit*/
                     SaveAllCheckedPosts();
-                    Thread.Sleep(TimeSpan.FromSeconds(10));
+                    Thread.Sleep(TimeSpan.FromSeconds(5));
                 }
 
                 /*Log the datetime when we completed the search*/
                 /*Now we want to start uploading the video files to youtube*/
-                mLastCheckedPosts = DateTime.Now;
+                DateTime checkedPostTime = DateTime.Now;
                 foreach (var clip in clipQueue)
                 {
                     clip.filepath = Web.DownloadFile(Functions.GetMp4Url(clip.clipUrl));
@@ -192,16 +188,15 @@ namespace ClipToTube
                 }
                 
                 /*By default we don't want to check reddit too often*/
-                /*However, if the upload queue it long we don't want to sleep for additional time*/
+                /*However, if the upload queue is long we don't want to sleep for additional time*/
                 /*So we'll take the default time we would normally sleep, then subtract the time it took to upload the files*/
-                TimeSpan defaultSleepTime = new TimeSpan(0, 10, 0);
-                TimeSpan uploadTime = DateTime.Now - mLastCheckedPosts;
+                TimeSpan uploadTime = DateTime.Now - checkedPostTime;
 
                 /*If we still need to sleep (eg. the upload time didn't take longer than the default sleep time) then we will sleep here*/
-                TimeSpan sleepTime = defaultSleepTime - uploadTime;
+                TimeSpan sleepTime = new TimeSpan(0 /*hours*/, 8 /*minutes*/, 0 /*seconds*/) - uploadTime;
                 if (sleepTime.TotalMilliseconds > 0)
                 {
-                    mLog.Write(Log.LogLevel.Info, $"Sleeping for {sleepTime.TotalSeconds} Seconds.");
+                    mLog.Write(Log.LogLevel.Info, $"Sleeping for {Math.Round(sleepTime.TotalSeconds)} Seconds.");
                     Thread.Sleep(sleepTime);
                 }
             }
@@ -224,18 +219,17 @@ namespace ClipToTube
 
 
         /// <summary>
-        /// Uploads a video to Youtube
+        /// Uploads a video to youtube
         /// </summary>
-        /// <param name="filepath"></param>
-        /// <param name="title"></param>
-        /// <returns></returns>
+        /// <param name="clip">Clip class containing file information</param>
+        /// <returns>Returns task</returns>
         private async Task Upload(Config.Clip clip)
         {
             var video = new Video();
             video.Snippet = new VideoSnippet();
             video.Snippet.Title = clip.post.Title;
             video.Snippet.Description = clip.post.Url.ToString();
-            video.Snippet.Tags = new string[] { "Hello" };
+            video.Snippet.Tags = new string[] { "twitch", "tv" };
             video.Snippet.CategoryId = "20";
 
             video.Status = new VideoStatus();
@@ -243,7 +237,7 @@ namespace ClipToTube
 
             using (var fileStream = new FileStream(clip.filepath, FileMode.Open))
             {
-                /*Upload the video to youtube async*/
+                /*Upload the video to youtube*/
                 var videosInsertRequest = mYoutube.Videos.Insert(video, "snippet,status", fileStream, "video/*");
                 videosInsertRequest.ProgressChanged += videosInsertRequest_ProgressChanged;
                 videosInsertRequest.ResponseReceived += (e) => { videosInsertRequest_ResponseReceived(e, clip.post.Id); };
@@ -256,13 +250,13 @@ namespace ClipToTube
         /// <summary>
         /// Youtube upload progress changed
         /// </summary>
-        /// <param name="progress"></param>
+        /// <param name="progress">Upload progress</param>
         void videosInsertRequest_ProgressChanged(IUploadProgress progress)
         {
             switch (progress.Status)
             {
                 case UploadStatus.Uploading:
-                    mLog.Write(Log.LogLevel.Success, $"{progress.BytesSent} bytes sent.");
+                    mLog.Write(Log.LogLevel.Success, $"{(progress.BytesSent / 1024f) / 1024f /*Convert from bytes to megabytes*/} MB sent.");
                     break;
 
                 case UploadStatus.Failed:
@@ -273,20 +267,21 @@ namespace ClipToTube
 
 
         /// <summary>
-        /// Youtube upload complete
+        /// Youtube upload complete event
         /// </summary>
-        /// <param name="video"></param>
-        void videosInsertRequest_ResponseReceived(Video video, string redditurl)
+        /// <param name="video">Youtube video</param>
+        /// <param name="postId">Reddit post id that the link was taken from</param>
+        void videosInsertRequest_ResponseReceived(Video video, string postId)
         {
             mLog.Write(Log.LogLevel.Success, $"Video id {video.Id} was successfully uploaded!");
 
             /*Upload was successful, so now we'll find the reddit post that the video was 
             taken from and submit a comment containing the youtube link*/
-            var post = mReddit.GetPost(new Uri($"https://www.reddit.com/{redditurl}/"));
+            var post = mReddit.GetPost(new Uri($"https://www.reddit.com/{postId}/"));
             if (post != null)
             {
                 post.Comment(Functions.FormatComment(video.Id));
-                mLog.Write(Log.LogLevel.Success, $"Comment posted to thread {redditurl}");
+                mLog.Write(Log.LogLevel.Success, $"Comment posted to thread {postId}");
             }
         }
 
@@ -294,8 +289,6 @@ namespace ClipToTube
         /// <summary>
         /// Main worker completed
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void MBackgroundWork_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
             if (e.Error != null)
@@ -310,7 +303,7 @@ namespace ClipToTube
         /// <summary>
         /// Authenticates our reddit account
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Returns true if successful</returns>
         private bool AuthenticateReddit()
         {
             mReddit = new Reddit(mSettings.reddit.username, mSettings.reddit.password);
@@ -321,7 +314,7 @@ namespace ClipToTube
         /// <summary>
         /// Authenticates our youtube account
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Returns task</returns>
         private async Task AuthenticateYoutube()
         {
             if (!File.Exists(Endpoints.YOUTUBE_CLIENT_SECRET))

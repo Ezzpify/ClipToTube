@@ -76,7 +76,7 @@ namespace ClipToTube
         /// <param name="source">Source string</param>
         /// <param name="start">Start string</param>
         /// <param name="end">End string</param>
-        /// <returns>Returns string if found</returns>
+        /// <returns>Returns string</returns>
         public static string GetStringBetween(string source, string start, string end)
         {
             try
@@ -133,7 +133,7 @@ namespace ClipToTube
             return
                   $"Youtube mirror: https://www.youtube.com/watch?v={youtubeUrlId}\n\n"
                 + $"---\n\n"
-                + $"{GetRandomQuote()} ^^| ^^[Creator](https://www.reddit.com/user/ZionTheKing/) ^^- ^^[Github](https://github.com/Ezzpify/ClipToTube) ^^- ^^[Subreddit list](http://pastebin.com/yzzegEEW)";
+                + $"{GetRandomQuote()} ^^| ^^[Creator](https://www.reddit.com/user/ZionTheKing/) ^^- ^^[Github](https://github.com/Ezzpify/ClipToTube) ^^- ^^[Subreddits](http://pastebin.com/yzzegEEW)";
         }
     }
 }
