@@ -1,5 +1,4 @@
-﻿/*System*/
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -7,13 +6,12 @@ using System.Threading.Tasks;
 using System.IO;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 
-/*Reddit*/
 using RedditSharp;
 using RedditSharp.Things;
 
-/*Youtube*/
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using Google.Apis.Upload;
@@ -27,7 +25,7 @@ namespace ClipToTube
         /// <summary>
         /// List of reddit posts we've already checked/dealt with
         /// </summary>
-        public List<string> mCheckedPosts = new List<string>();
+        private List<string> mCheckedPosts = new List<string>();
 
 
         /// <summary>
@@ -40,6 +38,12 @@ namespace ClipToTube
         /// Logs
         /// </summary>
         private Log mLog, mLogError, mLogYoutube;
+
+
+        /// <summary>
+        /// Last time we checked new posts
+        /// </summary>
+        private DateTime mLastCheckedPosts;
 
 
         /// <summary>
@@ -68,20 +72,27 @@ namespace ClipToTube
         {
             mSettings = settings;
 
+            /*Load the file containing all already checked reddit posts*/
             if (File.Exists(Endpoints.CHECKED_POSTS_FILE))
                 mCheckedPosts = JsonConvert.DeserializeObject<List<string>>
                     (File.ReadAllText(Endpoints.CHECKED_POSTS_FILE));
-            
-            if (AuthenticateReddit())
-                Console.WriteLine("Reddit authenticated");
+
+            if (!AuthenticateReddit())
+            {
+                Console.WriteLine("Reddit authentication failed");
+                return;
+            }
             
             AuthenticateYoutube().Wait();
-            if (mYoutube != null)
-                Console.WriteLine("Youtube authenticated");
+            if (mYoutube == null)
+            {
+                Console.WriteLine("Youtube authentication failed");
+                return;
+            }
 
-            mLog = new Log("Session", "Logs\\Session.txt", 3);
             mLogError = new Log("Error", "Logs\\ErrorLogs\\Error.txt", 3);
             mLogYoutube = new Log("Youtube", "Logs\\Youtube.txt", 3);
+            mLog = new Log("Session", "Logs\\Session.txt", 3);
 
             mBackgroundWork = new BackgroundWorker();
             mBackgroundWork.WorkerSupportsCancellation = true;
@@ -101,22 +112,31 @@ namespace ClipToTube
         {
             while (!mBackgroundWork.CancellationPending)
             {
+                List<Config.Clip> clipQueue = new List<Config.Clip>();
                 foreach (var subredditname in mSettings.subredditList)
                 {
-                    Subreddit subreddit;
-
-                    try
+                    mLog.Write(Log.LogLevel.Info, $"Checking /r/{subredditname}");
+                    Subreddit subreddit = null;
+                    for (int i = 0; i < 5; i++)
                     {
-                        subreddit = mReddit.GetSubreddit(subredditname);
-                    }
-                    catch (Exception ex)
-                    {
-                        mLogError.Write(Log.LogLevel.Error, $"Error getting Subreddit\n{ex.Message}");
-                        Thread.Sleep(5000);
-                        continue;
+                        try
+                        {
+                            /*Try to get the reddit*/
+                            subreddit = mReddit.GetSubreddit(subredditname);
+                            if (subreddit != null)
+                                break;
+                        }
+                        catch (Exception ex)
+                        {
+                            mLogError.Write(Log.LogLevel.Error, $"Error getting Subreddit '{subredditname}\n{ex.Message}");
+                            Thread.Sleep(5000);
+                            continue;
+                        }
                     }
 
                     List<Post> posts = new List<Post>();
+
+                    /*Take posts from both new and rising*/
                     posts.AddRange(subreddit.New.Take(30));
                     posts.AddRange(subreddit.Rising.Take(15));
 
@@ -124,37 +144,66 @@ namespace ClipToTube
                     {
                         try
                         {
-                            if (mCheckedPosts.Contains(post.Id) || post.Upvotes <= 2 || !post.IsSelfPost)
+                            /*If we already checked this post*/
+                            if (mCheckedPosts.Contains(post.Id))
+                                continue;
+                            
+                            /*Try to match first if we can find a link in the title, if not, then check the selfpost text*/
+                            Match regMatch = Functions.GetClipMatch(post.Title);
+
+                            if (!regMatch.Success && post.IsSelfPost)
+                                regMatch = Functions.GetClipMatch(post.SelfText);
+
+                            if (!regMatch.Success || string.IsNullOrEmpty(regMatch.Value))
                                 continue;
 
-                            mLog.Write(Log.LogLevel.Info, $"Checking post {post.Id} ({post.Title}) ({post.Shortlink})");
-                            
-                            var clipUrl = Functions.ExtractLinks(post.SelfText)
-                                .FirstOrDefault(o => o.Contains("clips.twitch.tv"));
-
-                            if (!string.IsNullOrEmpty(clipUrl))
+                            /*We found a link, add it to queue and keep searching*/
+                            mLog.Write(Log.LogLevel.Success, $"Adding a clips.twitch.tv link to queue ({post.Id} ({regMatch.Value})");
+                            clipQueue.Add(new Config.Clip()
                             {
-                                mLog.Write(Log.LogLevel.Success, $"Found a twitch clip link: {clipUrl}");
-                                string filePath = Web.DownloadFile(GetMp4Url(clipUrl));
+                                post = post,
+                                clipUrl = regMatch.Value
+                            });
 
-                                if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
-                                {
-                                    mLog.Write(Log.LogLevel.Success, $"Downloaded file! Proceeding to upload file.");
-                                    Upload(filePath, post.Title, post.Url.ToString(), post.Id).Wait();
-                                }
-                            }
+                            mCheckedPosts.Add(post.Id);
                         }
                         catch (Exception ex)
                         {
                             mLogError.Write(Log.LogLevel.Error, $"Something happened when checking post {post.Id}\n{ex}");
                         }
-
-                        mCheckedPosts.Add(post.Id);
-                        SaveAllCheckedPosts();
                     }
+                    
+                    /*Save all checked posts and wait before checking next subreddit*/
+                    SaveAllCheckedPosts();
+                    Thread.Sleep(TimeSpan.FromSeconds(10));
                 }
 
-                Thread.Sleep(TimeSpan.FromMinutes(15));
+                /*Log the datetime when we completed the search*/
+                /*Now we want to start uploading the video files to youtube*/
+                mLastCheckedPosts = DateTime.Now;
+                foreach (var clip in clipQueue)
+                {
+                    clip.filepath = Web.DownloadFile(Functions.GetMp4Url(clip.clipUrl));
+                    if (!string.IsNullOrEmpty(clip.filepath) && File.Exists(clip.filepath))
+                    {
+                        mLog.Write(Log.LogLevel.Success, $"Downloaded clip! Proceeding to upload. (Title: {clip.post.Title})");
+                        Upload(clip).Wait();
+                    }
+                }
+                
+                /*By default we don't want to check reddit too often*/
+                /*However, if the upload queue it long we don't want to sleep for additional time*/
+                /*So we'll take the default time we would normally sleep, then subtract the time it took to upload the files*/
+                TimeSpan defaultSleepTime = new TimeSpan(0, 10, 0);
+                TimeSpan uploadTime = DateTime.Now - mLastCheckedPosts;
+
+                /*If we still need to sleep (eg. the upload time didn't take longer than the default sleep time) then we will sleep here*/
+                TimeSpan sleepTime = defaultSleepTime - uploadTime;
+                if (sleepTime.TotalMilliseconds > 0)
+                {
+                    mLog.Write(Log.LogLevel.Info, $"Sleeping for {sleepTime.TotalSeconds} Seconds.");
+                    Thread.Sleep(sleepTime);
+                }
             }
         }
 
@@ -164,28 +213,13 @@ namespace ClipToTube
         /// </summary>
         private void SaveAllCheckedPosts()
         {
-            if (mCheckedPosts.Count > 175)
-                mCheckedPosts.RemoveRange(0, 25);
+            /*Only really need to save the last 1000 reddit links*/
+            /*Realistically I should have a database for this, but for now it will do*/
+            if (mCheckedPosts.Count > 1100)
+                mCheckedPosts.RemoveRange(0, 100);
 
             File.WriteAllText(Endpoints.CHECKED_POSTS_FILE,
                 JsonConvert.SerializeObject(mCheckedPosts, Formatting.Indented));
-        }
-
-
-        /// <summary>
-        /// Returns mp4 url from source
-        /// </summary>
-        /// <param name="url">url of clip</param>
-        /// <returns>Returns url</returns>
-        private string GetMp4Url(string url)
-        {
-            string wcontent = Web.DownloadString(url);
-            string urlend = Functions.GetStringBetween(wcontent, "clip_video_url: \"", "\",").Replace("\\", "");
-            
-            if (!string.IsNullOrEmpty(urlend))
-                return urlend;
-
-            return string.Empty;
         }
 
 
@@ -195,23 +229,24 @@ namespace ClipToTube
         /// <param name="filepath"></param>
         /// <param name="title"></param>
         /// <returns></returns>
-        private async Task Upload(string filepath, string title, string description, string redditurl)
+        private async Task Upload(Config.Clip clip)
         {
             var video = new Video();
             video.Snippet = new VideoSnippet();
-            video.Snippet.Title = title;
-            video.Snippet.Description = description;
+            video.Snippet.Title = clip.post.Title;
+            video.Snippet.Description = clip.post.Url.ToString();
             video.Snippet.Tags = new string[] { "Hello" };
             video.Snippet.CategoryId = "20";
 
             video.Status = new VideoStatus();
-            video.Status.PrivacyStatus = "public"; // or "private" or "unlisted"
+            video.Status.PrivacyStatus = "public";
 
-            using (var fileStream = new FileStream(filepath, FileMode.Open))
+            using (var fileStream = new FileStream(clip.filepath, FileMode.Open))
             {
+                /*Upload the video to youtube async*/
                 var videosInsertRequest = mYoutube.Videos.Insert(video, "snippet,status", fileStream, "video/*");
                 videosInsertRequest.ProgressChanged += videosInsertRequest_ProgressChanged;
-                videosInsertRequest.ResponseReceived += (e) => { videosInsertRequest_ResponseReceived(e, redditurl); };
+                videosInsertRequest.ResponseReceived += (e) => { videosInsertRequest_ResponseReceived(e, clip.post.Id); };
 
                 await videosInsertRequest.UploadAsync();
             }
@@ -227,11 +262,11 @@ namespace ClipToTube
             switch (progress.Status)
             {
                 case UploadStatus.Uploading:
-                    mLog.Write(Log.LogLevel.Info, $"{progress.BytesSent} bytes sent.");
+                    mLog.Write(Log.LogLevel.Success, $"{progress.BytesSent} bytes sent.");
                     break;
 
                 case UploadStatus.Failed:
-                    mLog.Write(Log.LogLevel.Info, $"An error prevented the upload from completing.\n{progress.Exception}");
+                    mLog.Write(Log.LogLevel.Error, $"An error prevented the upload from completing.\n{progress.Exception}");
                     break;
             }
         }
@@ -245,15 +280,12 @@ namespace ClipToTube
         {
             mLog.Write(Log.LogLevel.Success, $"Video id {video.Id} was successfully uploaded!");
 
+            /*Upload was successful, so now we'll find the reddit post that the video was 
+            taken from and submit a comment containing the youtube link*/
             var post = mReddit.GetPost(new Uri($"https://www.reddit.com/{redditurl}/"));
             if (post != null)
             {
-                string comment = 
-                     $"Youtube mirror: https://www.youtube.com/watch?v={video.Id}\n\n"
-                    + "---\n\n"
-                    + "^^Bot ^^creator: ^^https://www.reddit.com/user/ZionTheKing/";
-
-                post.Comment(comment);
+                post.Comment(Functions.FormatComment(video.Id));
                 mLog.Write(Log.LogLevel.Success, $"Comment posted to thread {redditurl}");
             }
         }
@@ -269,7 +301,9 @@ namespace ClipToTube
             if (e.Error != null)
                 mLogError.Write(Log.LogLevel.Error, $"An unhandled exception caused mBackgroundWork to crash.\n{e.Error}");
 
-            mLog.Write(Log.LogLevel.Info, $"Worker has exited.");
+            /*We don't really want to have the program exit by itself
+            Something probably happened here*/
+            mLog.Write(Log.LogLevel.Info, $"Worker has exited. Hmm.");
         }
 
 
@@ -280,7 +314,7 @@ namespace ClipToTube
         private bool AuthenticateReddit()
         {
             mReddit = new Reddit(mSettings.reddit.username, mSettings.reddit.password);
-            return mReddit.User != null;
+            return mReddit != null;
         }
 
 

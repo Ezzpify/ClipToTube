@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using RedditSharp.Things;
 
 namespace ClipToTube
 {
@@ -34,6 +35,30 @@ namespace ClipToTube
             /// Reddit password
             /// </summary>
             public string password { get; set; } = string.Empty;
+        }
+
+
+        /// <summary>
+        /// Class holding clip information
+        /// </summary>
+        public class Clip
+        {
+            /// <summary>
+            /// Local path to clip
+            /// </summary>
+            public string filepath { get; set; }
+
+
+            /// <summary>
+            /// clips.twitch.tv url
+            /// </summary>
+            public string clipUrl { get; set; }
+
+
+            /// <summary>
+            /// Reddit post
+            /// </summary>
+            public Post post { get; set; }
         }
     }
 }

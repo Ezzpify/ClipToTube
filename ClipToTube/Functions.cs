@@ -8,6 +8,12 @@ namespace ClipToTube
     class Functions
     {
         /// <summary>
+        /// Static random var
+        /// </summary>
+        private static Random mRandom = new Random();
+
+
+        /// <summary>
         /// Returns the current working directory
         /// </summary>
         /// <returns>Returns path string</returns>
@@ -28,19 +34,39 @@ namespace ClipToTube
 
 
         /// <summary>
-        /// Extract all valid urls from a string
+        /// Finds a clip.twitch.tv link from a string
         /// </summary>
-        /// <param name="str">String to extract from</param>
-        /// <returns>Returns List<string></returns>
-        public static List<string> ExtractLinks(string str)
+        /// <param name="text">String to match</param>
+        /// <returns>Returns empty if none found</returns>
+        public static Match GetClipMatch(string text)
         {
-            var list = new List<string>();
+            /*Example match: https://clips.twitch.tv/mojoonpc/JoyousToadOSkomodo */
+            Regex reg = new Regex(@"(https?:\/\/(?:[a-z0-9-]+\.)*clips.twitch\.tv(?:\S*)?)");
+            return reg.Match(text);
+        }
+        
 
-            Regex linkParser = new Regex(@"\b(?:https?://|www\.)\S+\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            foreach (Match m in linkParser.Matches(str))
-                list.Add(m.Value);
+        /// <summary>
+        /// Returns mp4 url from source
+        /// </summary>
+        /// <param name="url">url of clip</param>
+        /// <returns>Returns url</returns>
+        public static string GetMp4Url(string url)
+        {
+            string wcontent = Web.DownloadString(url);
+            if (!string.IsNullOrEmpty(wcontent))
+            {
+                /*Wew lad, this is how we find the raw .mp4 link from twitch source*/
+                /*Pretty messy!*/
+                string urlend = GetStringBetween(wcontent,
+                    "clip_video_url: \"",
+                    "\",").Replace("\\", "");
 
-            return list;
+                if (!string.IsNullOrEmpty(urlend))
+                    return urlend;
+            }
+
+            return string.Empty;
         }
 
 
@@ -60,13 +86,54 @@ namespace ClipToTube
                 {
                     int endIndex = source.IndexOf(end, startIndex + 1);
                     if (endIndex != -1)
-                    {
                         return source.Substring(startIndex + start.Length, endIndex - startIndex - start.Length);
-                    }
                 }
             }
             catch { }
             return string.Empty;
+        }
+
+
+        /// <summary>
+        /// Gets a random quote to add to the post
+        /// </summary>
+        /// <returns>Returns string</returns>
+        private static string GetRandomQuote()
+        {
+            List<string> quotes = new List<string>()
+            {
+                /*If you're wondering, these are 'quotes' from Bastion from the game Overwatch*/
+                /*He's a robot, so it makes sense right? We're both bots. Slaves.*/
+                "^^Doo-Woo",
+                "^^Beeple",
+                "^^Boo ^^Boo ^^Doo ^^De ^^Doo",
+                "^^Bweeeeeeeeeee",
+                "^^Chirr ^^Chirr ^^Chirr",
+                "^^Dun ^^Dun ^^Boop ^^Boop",
+                "^^Dweet ^^Dweet ^^Dweet!",
+                "^^Hee ^^Hoo ^^Hoo",
+                "^^Ooh-Ooo-Hoo-Hoo",
+                "^^Sh-Sh-Sh",
+                "^^Zwee?",
+                "^^Boop ^^boop",
+                "^^Hope ^^you ^^enj.. ^^I ^^mean ^^beep ^^boop."
+            };
+
+            return quotes[mRandom.Next(0, quotes.Count)];
+        }
+
+
+        /// <summary>
+        /// Returns a formatted reddit comment
+        /// </summary>
+        /// <param name="youtubeUrl">Youtube url to post</param>
+        /// <returns>Returns string</returns>
+        public static string FormatComment(string youtubeUrlId)
+        {
+            return
+                  $"Youtube mirror: https://www.youtube.com/watch?v={youtubeUrlId}\n\n"
+                + $"---\n\n"
+                + $"{GetRandomQuote()} ^^| ^^[Creator](https://www.reddit.com/user/ZionTheKing/) ^^- ^^[Github](https://github.com/Ezzpify/ClipToTube) ^^- ^^[Subreddit list](http://pastebin.com/yzzegEEW)";
         }
     }
 }
