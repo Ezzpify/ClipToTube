@@ -108,8 +108,6 @@ namespace ClipToTube
                 List<Config.Clip> clipQueue = new List<Config.Clip>();
                 foreach (var subredditname in mSettings.subredditList)
                 {
-                    mLog.Write(Log.LogLevel.Info, $"Checking /r/{subredditname}");
-
                     Subreddit subreddit = null;
                     for (int i = 0; i < 5; i++)
                     {
@@ -127,12 +125,16 @@ namespace ClipToTube
                             continue;
                         }
                     }
-
-                    List<Post> posts = new List<Post>();
-
+                    
                     /*Take posts from both new and rising*/
+                    List<Post> posts = new List<Post>();
                     posts.AddRange(subreddit.New.Take(30));
                     posts.AddRange(subreddit.Rising.Take(15));
+
+                    /*Remove post duplicates and remove posts we've already checked*/
+                    posts = posts.GroupBy(o => o.Id).Select(o => o.First()).ToList();
+                    posts.RemoveAll(p => mCheckedPosts.Any(o => o == p.Id));
+                    mLog.Write(Log.LogLevel.Info, $"Checking {posts.Count} posts at /r/{subredditname}");
 
                     foreach (var post in posts)
                     {
@@ -141,7 +143,10 @@ namespace ClipToTube
                             /*If we already checked this post*/
                             if (mCheckedPosts.Contains(post.Id))
                                 continue;
-                            
+
+                            /*Add this post's id to already checked list so it won't be checked again*/
+                            mCheckedPosts.Add(post.Id);
+
                             /*Try to match first if we can find a link in the title*/
                             Match regMatch = Functions.GetClipMatch(post.Title);
 
@@ -159,9 +164,6 @@ namespace ClipToTube
                                 post = post,
                                 clipUrl = regMatch.Value
                             });
-
-                            /*Add this post's id to already checked list so it won't be checked again*/
-                            mCheckedPosts.Add(post.Id);
                         }
                         catch (Exception ex)
                         {
@@ -170,8 +172,8 @@ namespace ClipToTube
                     }
                     
                     /*Save all checked posts and wait before checking next subreddit*/
-                    SaveAllCheckedPosts();
                     Thread.Sleep(TimeSpan.FromSeconds(5));
+                    SaveAllCheckedPosts();
                 }
 
                 /*Log the datetime when we completed the search*/
