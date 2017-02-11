@@ -62,7 +62,7 @@ namespace ClipToTube
 
                 if (!string.IsNullOrEmpty(urlend))
                 {
-                    urlend = urlend.Replace("preview.jpg", "1280x720.mp4");
+                    urlend = urlend.Replace("-preview.jpg", ".mp4");
                     return urlend;
                 }
             }

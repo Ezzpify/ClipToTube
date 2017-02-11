@@ -137,7 +137,7 @@ namespace ClipToTube
                             mCheckedPosts.Add(post.Id);
 
                             /*Try to match first if we can find a link in the title*/
-                            Match regMatch = Functions.GetClipMatch(post.Title);
+                            Match regMatch = Functions.GetClipMatch(post.Url.ToString());
 
                             /*Couldn't find a match in the title, if the post is a selfpost we'll check the text there*/
                             if (!regMatch.Success && post.IsSelfPost)
@@ -205,7 +205,8 @@ namespace ClipToTube
             DateTime checkedPostTime = DateTime.Now;
             foreach (var clip in clips)
             {
-                clip.filepath = Web.DownloadFile(Functions.GetMp4Url(clip.clipUrl));
+                string clipUrl = Functions.GetMp4Url(clip.clipUrl);
+                clip.filepath = Web.DownloadFile(clipUrl);
                 if (!string.IsNullOrEmpty(clip.filepath))
                 {
                     mLog.Write(Log.LogLevel.Success, $"Downloaded clip! Proceeding to upload. (Title: {clip.post.Title})");
