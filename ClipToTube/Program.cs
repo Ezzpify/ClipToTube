@@ -17,7 +17,6 @@ namespace ClipToTube
         static void Main(string[] args)
         {
             Console.Title = "ClipToTube";
-
             var settings = Settings.GetSettings();
 
             if (settings != null)

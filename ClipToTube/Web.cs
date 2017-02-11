@@ -61,7 +61,7 @@ namespace ClipToTube
                     }
                     catch (WebException ex)
                     {
-                        Console.WriteLine($"Weberror at DownloadFile {ex.Message}");
+                        Console.WriteLine($"Weberror at DownloadFile {ex}");
                     }
                 }
             }

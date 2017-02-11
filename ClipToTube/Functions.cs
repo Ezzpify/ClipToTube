@@ -57,13 +57,14 @@ namespace ClipToTube
             if (!string.IsNullOrEmpty(wcontent))
             {
                 /*Wew lad, this is how we find the raw .mp4 link from twitch source*/
-                /*Pretty messy!*/
-                string urlend = GetStringBetween(wcontent,
-                    "clip_video_url: \"",
-                    "\",").Replace("\\", "");
+                /*Pretty messy! Normally you should not do this but fak it men))*/
+                string urlend = GetStringBetween(wcontent, "property=\"og:image\" content=\"", "\"/>");
 
                 if (!string.IsNullOrEmpty(urlend))
+                {
+                    urlend = urlend.Replace("preview.jpg", "1280x720.mp4");
                     return urlend;
+                }
             }
 
             return string.Empty;
