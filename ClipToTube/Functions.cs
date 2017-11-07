@@ -58,7 +58,7 @@ namespace ClipToTube
             {
                 /*Wew lad, this is how we find the raw .mp4 link from twitch source*/
                 /*Pretty messy! Normally you should not do this but fak it men))*/
-                string urlend = GetStringBetween(wcontent, "property=\"og:image\" content=\"", "\"/>");
+                string urlend = "https://clips-media-assets.twitch.tv/" + GetStringBetween(wcontent, ":\"https://clips-media-assets.twitch.tv/", "\",\"");
 
                 if (!string.IsNullOrEmpty(urlend))
                 {
